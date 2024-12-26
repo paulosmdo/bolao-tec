@@ -77,7 +77,7 @@ export default function Home() {
             {numerosSorteados.map((numero) => (
               <span
                 key={numero}
-                className="flex items-center justify-center w-10 h-10 bg-green-500 text-white rounded-full text-2xl"
+                className="flex items-center justify-center w-10 h-10 bg-green-500 text-white rounded-full text-lg"
               >
                 {numero}
               </span>
@@ -101,7 +101,7 @@ export default function Home() {
                         numerosSorteados.includes(numero)
                           ? "bg-green-500 text-white"
                           : "bg-gray-200 text-zinc-600"
-                      } rounded-full text-2xl`}
+                      } rounded-full text-lg`}
                     >
                       {numero}
                     </span>
@@ -125,7 +125,7 @@ export default function Home() {
                       numerosSorteados.includes(numero)
                         ? "bg-green-500 text-white"
                         : "bg-gray-200 text-zinc-600"
-                    } rounded-full text-2xl`}
+                    } rounded-full text-lg`}
                   >
                     {numero}
                   </span>
