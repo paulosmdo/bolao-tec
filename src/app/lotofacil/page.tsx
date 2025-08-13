@@ -24,7 +24,7 @@ interface HistoricEntry {
 
 export default function LotofacilPage() {
   const [loading, setLoading] = useState(false);
-  const [nextDraw, setNextDraw] = useState<number | null>(null);
+  const [setNextDraw] = useState<number | null>(null);
   const [historicEntries, setHistoricEntries] = useState<HistoricEntry[]>([]);
   const [compareResults, setCompareResults] = useState<Record<string, number[]>>({});
 
@@ -276,7 +276,7 @@ export default function LotofacilPage() {
                 </button>
               </div>
             </div>
-            {Object.entries(entry.games).map(([key, jogo]) => (
+            {Object.entries(entry.games).map(([key]) => (
               <div key={key} className="mb-2">
                 <h3 className="font-medium text-zinc-500">
                   {key === 'game1'
