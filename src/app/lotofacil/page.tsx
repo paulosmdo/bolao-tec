@@ -118,7 +118,7 @@ export default function LotofacilPage() {
 
   function gerarGame(freq: Map<number, number>):Array<number>{
 
-    let newGame = Array.from(freq.entries())                   // transforma Map em [[n, freq], …]
+    const newGame = Array.from(freq.entries())                   // transforma Map em [[n, freq], …]
                 .map(([n, f]) => [n, f + random7()] as [number, number])   // adiciona um offset randômico
                 .sort((a, b) => b[1] - a[1] || a[0] - b[0])                // primeiro por frequência, depois por número
                 .slice(0, 15)
@@ -140,12 +140,12 @@ export default function LotofacilPage() {
 
     const byFreqDesc = base.slice(0, 10).map(([n]) => n);
 
-   const fill = base.map(([n, f]) => [n, random7()] as [number, number]) 
+   const fill = base.map(([n]) => [n, random7()] as [number, number]) 
                 .map(([n]) => n).filter((n) => !byFreqDesc.includes(n))
                 .slice(0, 15 - byFreqDesc.length);
    
 
-    let newGame = [...byFreqDesc, ...fill].sort((a, b) => a - b);
+    const newGame = [...byFreqDesc, ...fill].sort((a, b) => a - b);
     if(!validGame(newGame))      
       return gerarGame2(freq);
 
