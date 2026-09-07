@@ -39,3 +39,6 @@ next-env.d.ts
 /out
 /.api-hold
 *.apk
+
+# build temporário do npm run analyze
+.scripts-build/

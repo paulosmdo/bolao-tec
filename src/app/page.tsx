@@ -5,6 +5,12 @@ import NumberBall from "@/components/lotofacil/NumberBall";
 import Volante from "@/components/lotofacil/Volante";
 import StatCard from "@/components/lotofacil/StatCard";
 import FrequencyChart from "@/components/lotofacil/FrequencyChart";
+import {
+  PROFILE_METRICS,
+  PROFILE_METRIC_LABELS,
+  buildProfile,
+  type StatProfile,
+} from "@/lib/lotofacil/analysis";
 import { STRATEGY_LABELS } from "@/lib/lotofacil/constants";
 import { generateGames } from "@/lib/lotofacil/generator";
 import {
@@ -17,7 +23,7 @@ import {
 } from "@/lib/lotofacil/stats";
 import { addCombo, loadCombos, loadConfig, updateCombo } from "@/lib/lotofacil/storage";
 import type { AppConfig, Combo, Draw } from "@/lib/lotofacil/types";
-import { getConcurso, getUltimosConcursos } from "@/services/lotofacilApi";
+import { getConcurso, getHistorico } from "@/services/lotofacilApi";
 
 const newId = () =>
   typeof crypto !== "undefined" && "randomUUID" in crypto
@@ -36,6 +42,7 @@ export default function DashboardPage() {
   const [combos, setCombos] = useState<Combo[]>([]);
   const [ultimo, setUltimo] = useState<Draw | null>(null);
   const [freq, setFreq] = useState<Map<number, number> | null>(null);
+  const [profile, setProfile] = useState<StatProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -48,9 +55,12 @@ export default function DashboardPage() {
 
     (async () => {
       try {
-        const { ultimo: last, draws } = await getUltimosConcursos(cfg.drawsWindow);
+        // Uma chamada em lote cobre as duas janelas (frequência e perfil)
+        const history = await getHistorico(Math.max(cfg.drawsWindow, cfg.profileWindow));
+        const last = history[0];
         setUltimo(last);
-        setFreq(buildFrequency(draws));
+        setFreq(buildFrequency(history.slice(0, cfg.drawsWindow)));
+        setProfile(buildProfile(history.slice(0, cfg.profileWindow), cfg.profileSigma));
 
         // Confere automaticamente combos pendentes de concursos já realizados
         const pending = current.filter((c) => !c.result && c.targetContest <= last.numero);
@@ -98,13 +108,22 @@ export default function DashboardPage() {
     setGenerating(true);
     setError(null);
     try {
-      const { ultimo: last, draws } = await getUltimosConcursos(config.drawsWindow);
-      const frequency = buildFrequency(draws);
+      const history = await getHistorico(
+        Math.max(config.drawsWindow, config.profileWindow)
+      );
+      const last = history[0];
+      const frequency = buildFrequency(history.slice(0, config.drawsWindow));
+      const statProfile = buildProfile(
+        history.slice(0, config.profileWindow),
+        config.profileSigma
+      );
+      setProfile(statProfile);
       const games = generateGames(frequency, {
         gamesCount: config.gamesPerCombo,
         strategies: config.strategies,
         filters: config.filters,
         lastDraw: last.listaDezenas.map((d) => parseInt(d, 10)),
+        profile: statProfile,
         dispersion: config.dispersion,
       });
       const combo: Combo = {
@@ -211,6 +230,35 @@ export default function DashboardPage() {
               <p className="text-sm text-zinc-500">Carregando frequências...</p>
             )}
           </section>
+
+          {/* Perfil Estatístico (bandas do filtro rígido) */}
+          {profile && config?.strategies.statProfile && (
+            <section className="bg-noir-800 border border-noir-600 rounded-3xl p-5">
+              <h2 className="text-lg font-semibold text-zinc-100">Perfil Estatístico</h2>
+              <p className="text-xs text-zinc-500 mt-1 mb-3">
+                Últimos {profile.window} concursos (#{profile.fromContest}–#{profile.toContest}) ·
+                bandas a ±{profile.sigma}σ — jogos fora delas são descartados.
+              </p>
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+                {PROFILE_METRICS.map((m) => {
+                  const s = profile.metrics[m];
+                  return (
+                    <div key={m} className="bg-noir-700/60 rounded-2xl px-3 py-2.5">
+                      <div className="text-[11px] uppercase tracking-wide text-zinc-500">
+                        {PROFILE_METRIC_LABELS[m]}
+                      </div>
+                      <div className="text-lg font-semibold text-zinc-100">
+                        {s.min}–{s.max}
+                      </div>
+                      <div className="text-[11px] text-zinc-500">
+                        média {s.mean.toFixed(1)} · σ {s.std.toFixed(1)}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+          )}
 
           {/* Último resultado oficial */}
           <section className="bg-noir-800 border border-noir-600 rounded-3xl p-5">

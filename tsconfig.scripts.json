@@ -1,0 +1,17 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "outDir": ".scripts-build",
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "target": "es2020",
+    "incremental": false,
+    "jsx": "preserve",
+    "plugins": []
+  },
+  "include": [
+    "scripts/analyze-lotofacil.ts",
+    "src/lib/lotofacil/**/*.ts"
+  ]
+}

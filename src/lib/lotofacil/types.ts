@@ -25,6 +25,7 @@ export type StrategyId =
   | "strongBase"
   | "modalRepeat"
   | "antiCrowd"
+  | "statProfile"
   | "legacy";
 export type FilterId = "oddEven" | "frame" | "sum";
 
@@ -59,8 +60,19 @@ export interface AppConfig {
     strongBase: boolean;
     modalRepeat: boolean;
     antiCrowd: boolean;
+    statProfile: boolean;
   };
   filters: { oddEven: boolean; frame: boolean; sum: boolean };
+  /**
+   * Quantos concursos passados alimentam o Perfil Estatístico (bandas de
+   * ímpares, primos, Fibonacci, soma e repetição). 100 é o padrão.
+   */
+  profileWindow: number;
+  /**
+   * Largura das bandas do Perfil Estatístico em desvios padrão (1 = rígido,
+   * aceita ~1/3 do espaço; 2 = folgado, aceita ~90%).
+   */
+  profileSigma: number;
   /**
    * Fechamento por Dispersão: gera 4x mais candidatos e seleciona os N jogos
    * com a menor sobreposição possível entre si (greedy max-min)

@@ -59,6 +59,8 @@ export default function ConfigPage() {
       ...config,
       gamesPerCombo: Math.min(Math.max(Math.round(config.gamesPerCombo) || 1, 1), 100),
       drawsWindow: Math.min(Math.max(Math.round(config.drawsWindow) || 10, 3), 50),
+      profileWindow: Math.min(Math.max(Math.round(config.profileWindow) || 100, 20), 300),
+      profileSigma: Math.min(Math.max(Number(config.profileSigma) || 1, 0.5), 3),
       ticketPrice: Math.max(config.ticketPrice || 0, 0),
     };
     setConfig(clean);
@@ -137,6 +139,38 @@ export default function ConfigPage() {
           checked={config.strategies.antiCrowd}
           onChange={(v) => update({ strategies: { ...config.strategies, antiCrowd: v } })}
         />
+        <Toggle
+          label={STRATEGY_LABELS.statProfile}
+          checked={config.strategies.statProfile}
+          onChange={(v) => update({ strategies: { ...config.strategies, statProfile: v } })}
+        />
+        {config.strategies.statProfile && (
+          <div className="grid grid-cols-2 gap-3 pt-3">
+            <label className="block">
+              <span className="text-sm text-zinc-400">Janela do perfil (concursos)</span>
+              <input
+                type="number"
+                min={20}
+                max={300}
+                value={config.profileWindow}
+                onChange={(e) => update({ profileWindow: Number(e.target.value) })}
+                className={inputClass}
+              />
+            </label>
+            <label className="block">
+              <span className="text-sm text-zinc-400">Rigidez do filtro (σ, desvios padrão)</span>
+              <input
+                type="number"
+                min={0.5}
+                max={3}
+                step={0.5}
+                value={config.profileSigma}
+                onChange={(e) => update({ profileSigma: Number(e.target.value) })}
+                className={inputClass}
+              />
+            </label>
+          </div>
+        )}
         <div className="text-xs text-zinc-500 mt-3 space-y-1.5">
           <p>
             Os jogos do combo alternam entre as estratégias ligadas (todas desligadas = Roleta
@@ -151,6 +185,26 @@ export default function ConfigPage() {
             <span className="font-medium text-zinc-400">Anti-Multidão:</span> os prêmios de
             14/15 são rateados — evitar padrões que humanos jogam em massa (sequências, linhas
             do volante, cópia do último resultado) aumenta o prêmio se você ganhar.
+          </p>
+          <p>
+            <span className="font-medium text-zinc-400">Perfil Estatístico:</span> mede
+            nos últimos N concursos a média e o desvio padrão de 5 métricas — ímpares,
+            primos, Fibonacci, soma das 15 dezenas e repetidas do concurso anterior — e
+            descarta todo jogo que caia fora da banda média ± σ × desvio em qualquer uma
+            delas.
+          </p>
+          <p>
+            <span className="font-medium text-zinc-400">Rigidez (σ):</span> é o multiplicador
+            do desvio. Exemplo com a soma (média ≈ 193, desvio ≈ 17): σ = 0,5 aceita 185–202
+            (muito rígido, poucos jogos passam); σ = 1 aceita 176–211 (rígido, padrão —
+            descarta ~2/3 dos candidatos); σ = 2 aceita 159–228 (folgado, ~90% dos sorteios
+            reais cabem); σ = 3 praticamente não filtra.
+          </p>
+          <p>
+            Importante: a taxa de aprovação é a mesma para sorteios reais e para combinações
+            aleatórias (~1/3 a 1σ). Diminuir σ deixa os jogos mais &quot;típicos&quot;, não mais
+            prováveis de acertar. O que melhora o retorno é o Anti-Multidão — por isso, entre
+            os aprovados, esta estratégia escolhe o jogo menos popular.
           </p>
         </div>
       </section>

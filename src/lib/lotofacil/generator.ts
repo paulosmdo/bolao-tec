@@ -9,6 +9,7 @@ import {
   SUM_MAX,
   VOLANTE_LINES,
 } from "./constants";
+import { passesProfile, profileViolations, type StatProfile } from "./analysis";
 import type { FilterId, GeneratedGame, StrategyId } from "./types";
 
 /**
@@ -26,6 +27,14 @@ const RELAX_ORDER: FilterId[] = ["sum", "frame", "oddEven"];
 
 /** Fator de sobre-amostragem do Fechamento por Dispersão */
 const DISPERSION_OVERSAMPLE = 4;
+
+/**
+ * Orçamento do Perfil Estatístico. A 1σ, ~1/3 dos candidatos passa nas 5
+ * bandas, então 3000 tentativas falham com probabilidade ~(2/3)^3000 ≈ 0.
+ * O laço para antes disso assim que reúne PROFILE_POOL aprovados.
+ */
+const PROFILE_MAX_ATTEMPTS = 3000;
+const PROFILE_POOL = 6;
 
 const FILTER_FNS: Record<FilterId, (game: number[]) => boolean> = {
   oddEven: (game) => ODD_COUNTS_OK.has(game.filter((n) => n % 2 === 1).length),
@@ -199,10 +208,59 @@ export function antiCrowdGame(lastDraw?: number[]): number[] {
   return best;
 }
 
+/**
+ * Estratégia 5 — Perfil Estatístico (filtros rígidos).
+ * Gera candidatos pela roleta viciada com os pesos da janela de frequência
+ * do próprio perfil (viés leve — com 100 concursos os pesos variam ~±15%,
+ * o que preserva a diversidade) e DESCARTA todo candidato que caia fora de
+ * qualquer banda média ± σ·desvio do histórico em:
+ *   ímpares/pares · primos · Fibonacci · soma · repetidas do último concurso.
+ * Entre os primeiros PROFILE_POOL aprovados, devolve o de menor crowdScore —
+ * os prêmios de 14/15 são rateados, então, empatados no perfil, o jogo menos
+ * "humano" vale mais. Se o orçamento estourar (bandas infactíveis com o
+ * último concurso, p.ex.), devolve o candidato com menos violações: termina
+ * sempre.
+ */
+export function statProfileGame(profile: StatProfile, lastDraw?: number[]): number[] {
+  const weights = buildWeights(profile.frequency);
+  const approved: number[][] = [];
+  let fallback: number[] = [];
+  let fallbackViolations = Infinity;
+
+  for (let i = 0; i < PROFILE_MAX_ATTEMPTS && approved.length < PROFILE_POOL; i++) {
+    const candidate = weightedSample(weights, GAME_SIZE);
+    if (passesProfile(candidate, profile, lastDraw)) {
+      approved.push(candidate);
+      continue;
+    }
+    if (approved.length === 0) {
+      const v = profileViolations(candidate, profile, lastDraw).length;
+      if (v < fallbackViolations) {
+        fallbackViolations = v;
+        fallback = candidate;
+      }
+    }
+  }
+
+  if (approved.length === 0) return fallback;
+
+  let best = approved[0];
+  let bestScore = crowdScore(best, lastDraw);
+  for (const candidate of approved.slice(1)) {
+    const s = crowdScore(candidate, lastDraw);
+    if (s < bestScore) {
+      best = candidate;
+      bestScore = s;
+    }
+  }
+  return best;
+}
+
 interface StrategyContext {
   weights: Map<number, number>;
   freq: Map<number, number>;
   lastDraw?: number[];
+  profile?: StatProfile;
 }
 
 type ActiveStrategy = Exclude<StrategyId, "legacy">;
@@ -216,6 +274,9 @@ const STRATEGY_FNS: Record<ActiveStrategy, (ctx: StrategyContext) => number[]> =
       ? modalRepeatGame(weights, lastDraw)
       : weightedRouletteGame(weights),
   antiCrowd: ({ lastDraw }) => antiCrowdGame(lastDraw),
+  // sem perfil calculado (histórico indisponível), degrada para a roleta viciada
+  statProfile: ({ profile, weights, lastDraw }) =>
+    profile ? statProfileGame(profile, lastDraw) : weightedRouletteGame(weights),
 };
 
 interface GenerateOptions {
@@ -225,10 +286,13 @@ interface GenerateOptions {
     strongBase: boolean;
     modalRepeat: boolean;
     antiCrowd: boolean;
+    statProfile: boolean;
   };
   filters: { oddEven: boolean; frame: boolean; sum: boolean };
   /** Dezenas do último concurso — habilita Repetição Modal e Anti-Multidão pleno */
   lastDraw?: number[];
+  /** Perfil estatístico (buildProfile) — habilita a estratégia Perfil Estatístico */
+  profile?: StatProfile;
   /** Fechamento por Dispersão: seleciona os N jogos menos sobrepostos entre 4N candidatos */
   dispersion?: boolean;
 }
@@ -247,10 +311,12 @@ export function generateGames(
     weights: buildWeights(freq),
     freq,
     lastDraw: options.lastDraw,
+    profile: options.profile,
   };
 
+  // Perfil Estatístico vai primeiro: é o jogo que a Dispersão preserva como semente
   const enabledStrategies = (
-    ["weighted", "strongBase", "modalRepeat", "antiCrowd"] as ActiveStrategy[]
+    ["statProfile", "weighted", "strongBase", "modalRepeat", "antiCrowd"] as ActiveStrategy[]
   ).filter((s) => options.strategies[s]);
   if (enabledStrategies.length === 0) enabledStrategies.push("weighted");
 

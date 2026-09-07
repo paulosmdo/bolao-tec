@@ -26,6 +26,8 @@ export default function HistoryPage() {
   const [contestFilter, setContestFilter] = useState("");
   const [minHits, setMinHits] = useState("all");
   const [checkingId, setCheckingId] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editValue, setEditValue] = useState("");
   const [message, setMessage] = useState<string | null>(null);
 
   useEffect(() => {
@@ -56,6 +58,44 @@ export default function HistoryPage() {
     } finally {
       setCheckingId(null);
     }
+  };
+
+  const startEdit = (combo: Combo) => {
+    setEditingId(combo.id);
+    setEditValue(String(combo.targetContest));
+    setMessage(null);
+  };
+
+  const cancelEdit = () => {
+    setEditingId(null);
+    setEditValue("");
+  };
+
+  /**
+   * Troca o concurso alvo do combo. A conferência pertence ao concurso antigo,
+   * então é descartada: o combo volta a "pendente" e o dashboard confere de
+   * novo sozinho (ou via "Conferir") assim que o novo concurso sair.
+   */
+  const saveEdit = (combo: Combo) => {
+    const target = Math.round(Number(editValue));
+    if (!Number.isInteger(target) || target < 1 || target > 999999) {
+      setMessage("Informe um número de concurso válido.");
+      return;
+    }
+    if (target === combo.targetContest) {
+      cancelEdit();
+      return;
+    }
+    if (
+      combo.result &&
+      !window.confirm(
+        `Este combo já foi conferido contra o concurso #${combo.targetContest}. Mudar para #${target} apaga a conferência (você pode conferir de novo). Continuar?`
+      )
+    ) {
+      return;
+    }
+    setCombos(updateCombo(combo.id, { targetContest: target, result: undefined }));
+    cancelEdit();
   };
 
   const handleDelete = (combo: Combo) => {
@@ -152,9 +192,52 @@ export default function HistoryPage() {
           <div key={combo.id} className="bg-noir-800 border border-noir-600 rounded-3xl p-5">
             <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
               <div>
-                <h2 className="text-lg font-semibold text-zinc-100">
-                  Concurso <span className="text-volt">#{combo.targetContest}</span>
-                </h2>
+                {editingId === combo.id ? (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-lg font-semibold text-zinc-100">Concurso</span>
+                    <input
+                      type="number"
+                      min={1}
+                      autoFocus
+                      value={editValue}
+                      onChange={(e) => setEditValue(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") saveEdit(combo);
+                        if (e.key === "Escape") cancelEdit();
+                      }}
+                      className="w-28 bg-noir-700 border border-volt/60 rounded-xl px-3 py-1.5 text-zinc-100 focus:outline-none"
+                    />
+                    <button
+                      onClick={() => saveEdit(combo)}
+                      className="px-3 py-1.5 rounded-full text-sm font-semibold bg-volt text-volt-ink hover:bg-volt-soft transition-colors"
+                    >
+                      Salvar
+                    </button>
+                    <button
+                      onClick={cancelEdit}
+                      className="px-3 py-1.5 rounded-full text-sm border border-noir-600 text-zinc-300 hover:bg-noir-700 transition-colors"
+                    >
+                      Cancelar
+                    </button>
+                  </div>
+                ) : (
+                  <h2 className="text-lg font-semibold text-zinc-100 flex items-center gap-2">
+                    <span>
+                      Concurso <span className="text-volt">#{combo.targetContest}</span>
+                    </span>
+                    <button
+                      onClick={() => startEdit(combo)}
+                      title="Editar número do concurso"
+                      aria-label="Editar número do concurso"
+                      className="p-1 rounded-full text-zinc-500 hover:text-volt hover:bg-noir-700 transition-colors"
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M12 20h9" />
+                        <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z" />
+                      </svg>
+                    </button>
+                  </h2>
+                )}
                 <p className="text-xs text-zinc-500">
                   Gerado em {new Date(combo.createdAt).toLocaleString("pt-BR")} ·{" "}
                   {combo.games.length} jogos · {formatBRL(comboSpent)}

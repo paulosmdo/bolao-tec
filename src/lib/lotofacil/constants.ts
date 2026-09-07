@@ -57,8 +57,16 @@ export const DEFAULT_CONFIG: AppConfig = {
   gamesPerCombo: 3,
   drawsWindow: 10,
   ticketPrice: 3.5,
-  strategies: { weighted: true, strongBase: true, modalRepeat: true, antiCrowd: true },
+  strategies: {
+    weighted: true,
+    strongBase: true,
+    modalRepeat: true,
+    antiCrowd: true,
+    statProfile: true,
+  },
   filters: { oddEven: true, frame: true, sum: true },
+  profileWindow: 100,
+  profileSigma: 1,
   dispersion: true,
 };
 
@@ -67,6 +75,7 @@ export const STRATEGY_LABELS: Record<string, string> = {
   strongBase: "Base Forte (10 fixos + 5 aleatórios)",
   modalRepeat: "Repetição Modal (9 do último + 6 ausentes)",
   antiCrowd: "Anti-Multidão (evita jogos populares)",
+  statProfile: "Perfil Estatístico (filtros rígidos ±1σ dos últimos 100)",
   legacy: "Estratégia antiga (migrado)",
 };
 
