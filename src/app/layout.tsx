@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import localFont from "next/font/local";
 import "./globals.css";
+import NavBar from "@/components/NavBar";
 
 const geistSans = localFont({
   src: "./fonts/GeistVF.woff",
@@ -14,8 +15,8 @@ const geistMono = localFont({
 });
 
 export const metadata: Metadata = {
-  title: "Bolão Tecsoft",
-  description: "Bolão feito pelos funcionarios do desenvolvimento",
+  title: "Lotofácil",
+  description: "Gerador de combos otimizados para concursos com final 0 da Lotofácil",
 };
 
 export default function RootLayout({
@@ -26,8 +27,9 @@ export default function RootLayout({
   return (
     <html lang="pt-br">
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+        className={`${geistSans.variable} ${geistMono.variable} antialiased bg-noir-950 text-zinc-100 min-h-screen`}
       >
+        <NavBar />
         {children}
       </body>
     </html>
