@@ -176,6 +176,11 @@ export function buildProfile(draws: Draw[], sigma = 1): StatProfile {
 /**
  * Métricas do jogo que caem FORA da banda do perfil. Lista vazia = aprovado.
  * A métrica `repeat` só é avaliada quando o último concurso é informado.
+ *
+ * O perfil é medido em sorteios de 15 dezenas. Para jogos de 16–20 dezenas
+ * todas as métricas crescem proporcionalmente (um jogo de 20 tem 4/3 das
+ * ímpares, primos, soma... de um de 15), então as bandas são escaladas por
+ * game.length / 15 antes da comparação.
  */
 export function profileViolations(
   game: number[],
@@ -183,9 +188,12 @@ export function profileViolations(
   lastDraw?: number[]
 ): ProfileMetric[] {
   const f = gameFeatures(game, lastDraw);
+  const scale = game.length / GAME_SIZE;
   const outside = (metric: ProfileMetric, value: number | undefined) => {
     if (value === undefined) return false;
-    const { min, max } = profile.metrics[metric];
+    const band = profile.metrics[metric];
+    const min = Math.round(band.min * scale);
+    const max = Math.round(band.max * scale);
     return value < min || value > max;
   };
   return PROFILE_METRICS.filter((m) =>

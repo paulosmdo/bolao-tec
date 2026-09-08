@@ -1,7 +1,28 @@
 import type { AppConfig } from "./types";
 
 export const ALL_NUMBERS = Array.from({ length: 25 }, (_, i) => i + 1);
+/** Dezenas sorteadas por concurso (e tamanho mínimo da aposta) */
 export const GAME_SIZE = 15;
+/** A Caixa aceita apostas de 15 a 20 dezenas */
+export const MIN_GAME_SIZE = 15;
+export const MAX_GAME_SIZE = 20;
+export const clampGameSize = (n: number) =>
+  Math.min(Math.max(Math.round(n) || MIN_GAME_SIZE, MIN_GAME_SIZE), MAX_GAME_SIZE);
+
+/**
+ * Bandas dos filtros de padrão para um jogo de `size` dezenas. Para 15
+ * reproduzem exatamente as constantes históricas abaixo (7–8 ímpares,
+ * 9–10 na moldura, soma 180–210); para 16–20 escalam pelo valor esperado.
+ */
+export const oddCountsFor = (size: number) => {
+  const e = (size * 13) / 25;
+  return new Set([Math.floor(e), Math.ceil(e)]);
+};
+export const frameBoundsFor = (size: number): [number, number] => {
+  const e = (size * 16) / 25;
+  return [Math.floor(e), Math.ceil(e)];
+};
+export const sumBoundsFor = (size: number): [number, number] => [12 * size, 14 * size];
 
 /**
  * Volante 5x5:
@@ -55,6 +76,7 @@ export const FIXED_PRIZES: Record<number, number> = {
 
 export const DEFAULT_CONFIG: AppConfig = {
   gamesPerCombo: 3,
+  numbersPerGame: 15,
   drawsWindow: 10,
   ticketPrice: 3.5,
   strategies: {
@@ -65,9 +87,13 @@ export const DEFAULT_CONFIG: AppConfig = {
     statProfile: true,
   },
   filters: { oddEven: true, frame: true, sum: true },
+  strongBaseFixed: 10,
+  modalRepeatCount: 9,
   profileWindow: 100,
   profileSigma: 1,
   dispersion: true,
+  matrixClosing: false,
+  matrixFixedCount: 9,
 };
 
 export const STRATEGY_LABELS: Record<string, string> = {
@@ -76,6 +102,7 @@ export const STRATEGY_LABELS: Record<string, string> = {
   modalRepeat: "Repetição Modal (9 do último + 6 ausentes)",
   antiCrowd: "Anti-Multidão (evita jogos populares)",
   statProfile: "Perfil Estatístico (filtros rígidos ±1σ dos últimos 100)",
+  matrix: "Matriz Combinatória (bloco sintetizado)",
   legacy: "Estratégia antiga (migrado)",
 };
 

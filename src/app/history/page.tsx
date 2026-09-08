@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useState } from "react";
 import NumberBall from "@/components/lotofacil/NumberBall";
 import { STRATEGY_LABELS } from "@/lib/lotofacil/constants";
-import { countHits, fixedPrizeFor, formatBRL } from "@/lib/lotofacil/stats";
+import { countHits, formatBRL, ticketCost, ticketPrize } from "@/lib/lotofacil/stats";
 import { deleteCombo, loadCombos, loadConfig, updateCombo } from "@/lib/lotofacil/storage";
 import type { Combo } from "@/lib/lotofacil/types";
 import { getConcurso } from "@/services/lotofacilApi";
@@ -181,12 +181,15 @@ export default function HistoryPage() {
       {filtered.map(({ combo, games }) => {
         const drawn = combo.result?.drawnNumbers;
         const comboWon = drawn
-          ? combo.games.reduce((acc, g) => {
-              const prize = fixedPrizeFor(countHits(g.numbers, drawn));
-              return acc + (prize ?? 0);
-            }, 0)
+          ? combo.games.reduce(
+              (acc, g) => acc + ticketPrize(g.numbers.length, countHits(g.numbers, drawn)).fixed,
+              0
+            )
           : 0;
-        const comboSpent = combo.games.length * ticketPrice;
+        const comboSpent = combo.games.reduce(
+          (acc, g) => acc + ticketCost(g.numbers.length, ticketPrice),
+          0
+        );
 
         return (
           <div key={combo.id} className="bg-noir-800 border border-noir-600 rounded-3xl p-5">
@@ -284,11 +287,17 @@ export default function HistoryPage() {
             <div className="space-y-3">
               {games.map((game, i) => {
                 const hits = drawn ? countHits(game.numbers, drawn) : null;
-                const prize = hits !== null ? fixedPrizeFor(hits) : 0;
+                const prize = hits !== null ? ticketPrize(game.numbers.length, hits) : null;
                 return (
                   <div key={i}>
                     <p className="text-xs text-zinc-500 mb-1.5">
                       {STRATEGY_LABELS[game.strategy] ?? game.strategy}
+                      {game.numbers.length > 15 && (
+                        <span className="text-zinc-400"> · {game.numbers.length} dezenas</span>
+                      )}
+                      {game.closing === "matrix" && (
+                        <span className="text-sky-300/80"> · fechamento por matriz</span>
+                      )}
                       {game.relaxedFilters.length > 0 && (
                         <span className="text-amber-400/80">
                           {" "}
@@ -301,11 +310,8 @@ export default function HistoryPage() {
                         >
                           {" "}
                           · {hits} acertos
-                          {prize === null
-                            ? " · prêmio variável 🎉"
-                            : prize > 0
-                            ? ` · ${formatBRL(prize)}`
-                            : ""}
+                          {prize?.variable ? " · prêmio variável 🎉" : ""}
+                          {prize && prize.fixed > 0 ? ` · ${formatBRL(prize.fixed)}` : ""}
                         </span>
                       )}
                     </p>

@@ -2,7 +2,7 @@ import type { CapacitorConfig } from "@capacitor/cli";
 
 const config: CapacitorConfig = {
   appId: "br.com.paulosmdo.lotofacil",
-  appName: "Lotofácil Final 0",
+  appName: "Lotofácil",
   webDir: "out",
   plugins: {
     /**

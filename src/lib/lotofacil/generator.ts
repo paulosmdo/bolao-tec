@@ -2,12 +2,11 @@ import {
   ALL_NUMBERS,
   GAME_SIZE,
   MOLDURA,
-  ODD_COUNTS_OK,
-  FRAME_MIN,
-  FRAME_MAX,
-  SUM_MIN,
-  SUM_MAX,
   VOLANTE_LINES,
+  clampGameSize,
+  frameBoundsFor,
+  oddCountsFor,
+  sumBoundsFor,
 } from "./constants";
 import { passesProfile, profileViolations, type StatProfile } from "./analysis";
 import type { FilterId, GeneratedGame, StrategyId } from "./types";
@@ -36,15 +35,19 @@ const DISPERSION_OVERSAMPLE = 4;
 const PROFILE_MAX_ATTEMPTS = 3000;
 const PROFILE_POOL = 6;
 
+/** Filtros de padrão — as bandas dependem do tamanho do jogo (15 = histórico) */
 const FILTER_FNS: Record<FilterId, (game: number[]) => boolean> = {
-  oddEven: (game) => ODD_COUNTS_OK.has(game.filter((n) => n % 2 === 1).length),
+  oddEven: (game) =>
+    oddCountsFor(game.length).has(game.filter((n) => n % 2 === 1).length),
   frame: (game) => {
+    const [min, max] = frameBoundsFor(game.length);
     const inFrame = game.filter((n) => MOLDURA.has(n)).length;
-    return inFrame >= FRAME_MIN && inFrame <= FRAME_MAX;
+    return inFrame >= min && inFrame <= max;
   },
   sum: (game) => {
+    const [min, max] = sumBoundsFor(game.length);
     const sum = game.reduce((acc, n) => acc + n, 0);
-    return sum >= SUM_MIN && sum <= SUM_MAX;
+    return sum >= min && sum <= max;
   },
 };
 
@@ -84,14 +87,14 @@ function weightedSample(weights: Map<number, number>, k: number): number[] {
   return picked.sort((a, b) => a - b);
 }
 
-/** Amostra uniforme de 15 dezenas (Fisher-Yates parcial) */
-function uniformGame(): number[] {
+/** Amostra uniforme de `size` dezenas (Fisher-Yates parcial) */
+function uniformGame(size = GAME_SIZE): number[] {
   const pool = [...ALL_NUMBERS];
-  for (let i = pool.length - 1; i >= pool.length - GAME_SIZE; i--) {
+  for (let i = pool.length - 1; i >= pool.length - size; i--) {
     const j = Math.floor(Math.random() * (i + 1));
     [pool[i], pool[j]] = [pool[j], pool[i]];
   }
-  return pool.slice(pool.length - GAME_SIZE).sort((a, b) => a - b);
+  return pool.slice(pool.length - size).sort((a, b) => a - b);
 }
 
 /**
@@ -99,27 +102,39 @@ function uniformGame(): number[] {
  * Dezenas quentes tendem a entrar, sem garantia — variância controlada,
  * nunca o mesmo jogo fixo.
  */
-export function weightedRouletteGame(weights: Map<number, number>): number[] {
-  return weightedSample(weights, GAME_SIZE);
+export function weightedRouletteGame(weights: Map<number, number>, size = GAME_SIZE): number[] {
+  return weightedSample(weights, size);
 }
 
+/** Limites da Base Forte: todas fixas seria sempre o mesmo jogo */
+export const STRONG_BASE_MIN = 1;
+export const strongBaseMax = (size = GAME_SIZE) => size - 1;
+
 /**
- * Estratégia 2 — Base Forte: as 10 dezenas mais frequentes entram fixas e as
- * 5 restantes são sorteadas uniformemente entre as 15 que sobraram.
+ * Estratégia 2 — Base Forte: as `fixedCount` dezenas mais frequentes entram
+ * fixas (padrão 10) e as size − fixedCount restantes são sorteadas
+ * uniformemente entre as que sobraram.
  */
-export function strongBaseGame(freq: Map<number, number>): number[] {
+export function strongBaseGame(
+  freq: Map<number, number>,
+  fixedCount = 10,
+  size = GAME_SIZE
+): number[] {
+  const k = Math.min(Math.max(Math.round(fixedCount) || 10, STRONG_BASE_MIN), strongBaseMax(size));
+  const fillCount = size - k;
+
   const sorted = ALL_NUMBERS
     .map((n) => [n, freq.get(n) ?? 0] as [number, number])
     .sort((a, b) => b[1] - a[1] || a[0] - b[0]);
 
-  const base = sorted.slice(0, 10).map(([n]) => n);
-  const rest = sorted.slice(10).map(([n]) => n);
+  const base = sorted.slice(0, k).map(([n]) => n);
+  const rest = sorted.slice(k).map(([n]) => n);
 
-  for (let i = rest.length - 1; i > rest.length - 1 - 5; i--) {
+  for (let i = rest.length - 1; i > rest.length - 1 - fillCount; i--) {
     const j = Math.floor(Math.random() * (i + 1));
     [rest[i], rest[j]] = [rest[j], rest[i]];
   }
-  const fill = rest.slice(rest.length - 5);
+  const fill = rest.slice(rest.length - fillCount);
 
   return [...base, ...fill].sort((a, b) => a - b);
 }
@@ -131,13 +146,24 @@ export function strongBaseGame(freq: Map<number, number>): number[] {
  * ~79% de todos os sorteios. A estratégia sorteia k ∈ {8,9,10} com essas
  * proporções, escolhe k repetidas do último concurso e completa com as
  * ausentes, ambas ponderadas pela frequência da janela.
+ *
+ * `repeatCount` desloca o centro (padrão 9): sorteia k ∈ {c−1, c, c+1} com as
+ * mesmas proporções 30/41/29, limitado a [size − 10, 15] (o último concurso
+ * tem 15 dezenas e só existem 10 ausentes para completar).
  */
+export const MODAL_REPEAT_MAX = 15;
+export const modalRepeatMin = (size = GAME_SIZE) => Math.max(5, size - (25 - GAME_SIZE));
+
 export function modalRepeatGame(
   weights: Map<number, number>,
-  lastDraw: number[]
+  lastDraw: number[],
+  repeatCount = 9,
+  size = GAME_SIZE
 ): number[] {
+  const min = modalRepeatMin(size);
+  const c = Math.min(Math.max(Math.round(repeatCount) || 9, min), MODAL_REPEAT_MAX);
   const r = Math.random();
-  const k = r < 0.3 ? 8 : r < 0.71 ? 9 : 10;
+  const k = Math.min(Math.max(r < 0.3 ? c - 1 : r < 0.71 ? c : c + 1, min), MODAL_REPEAT_MAX);
 
   const inLast = new Set(lastDraw);
   const lastPool = new Map<number, number>();
@@ -145,7 +171,7 @@ export function modalRepeatGame(
   weights.forEach((w, n) => (inLast.has(n) ? lastPool : absentPool).set(n, w));
 
   const repeats = weightedSample(lastPool, k);
-  const fresh = weightedSample(absentPool, GAME_SIZE - k);
+  const fresh = weightedSample(absentPool, size - k);
   return [...repeats, ...fresh].sort((a, b) => a - b);
 }
 
@@ -157,6 +183,10 @@ export function modalRepeatGame(
  */
 export function crowdScore(game: number[], lastDraw?: number[]): number {
   const set = new Set(game);
+  const size = game.length;
+  // Jogos maiores que 15 preenchem mais do volante: os limiares escalam com
+  // o tamanho para que "popular" continue significando "acima do acaso".
+  const extra = size - GAME_SIZE;
   let score = 0;
 
   // Sequências longas (ex.: 1,2,3,4,5): run de 4+ consecutivos
@@ -173,17 +203,20 @@ export function crowdScore(game: number[], lastDraw?: number[]): number {
   // Linhas/colunas completas do volante (padrões visuais deliberados).
   // Com 15 marcas o acaso produz ~0,6 linha completa; 2+ é assinatura humana.
   const fullLines = VOLANTE_LINES.filter((line) => line.every((n) => set.has(n))).length;
-  if (fullLines >= 2) score += (fullLines - 1) * 2;
+  const linesThreshold = 2 + Math.round(extra * 0.6);
+  if (fullLines >= linesThreshold) score += (fullLines - linesThreshold + 1) * 2;
 
   // Quase-cópia do último resultado (muita gente repete o concurso anterior)
   if (lastDraw) {
     const overlap = game.filter((n) => new Set(lastDraw).has(n)).length;
-    if (overlap >= 12) score += overlap - 11;
+    const overlapThreshold = 12 + Math.round(extra * 0.6);
+    if (overlap >= overlapThreshold) score += overlap - overlapThreshold + 1;
   }
 
   // Bloco compacto (ex.: tudo entre 01 e 18). Range uniforme esperado ≈ 23.
   const range = game[game.length - 1] - game[0];
-  if (range <= 18) score += 19 - range;
+  const compactThreshold = 18 + extra;
+  if (range <= compactThreshold) score += compactThreshold + 1 - range;
 
   return score;
 }
@@ -193,12 +226,12 @@ export function crowdScore(game: number[], lastDraw?: number[]): number {
  * menor crowdScore (parando cedo se achar score zero). Laço fixo — termina
  * sempre.
  */
-export function antiCrowdGame(lastDraw?: number[]): number[] {
-  let best = uniformGame();
+export function antiCrowdGame(lastDraw?: number[], size = GAME_SIZE): number[] {
+  let best = uniformGame(size);
   let bestScore = crowdScore(best, lastDraw);
 
   for (let i = 0; i < 8 && bestScore > 0; i++) {
-    const candidate = uniformGame();
+    const candidate = uniformGame(size);
     const s = crowdScore(candidate, lastDraw);
     if (s < bestScore) {
       best = candidate;
@@ -221,14 +254,18 @@ export function antiCrowdGame(lastDraw?: number[]): number[] {
  * último concurso, p.ex.), devolve o candidato com menos violações: termina
  * sempre.
  */
-export function statProfileGame(profile: StatProfile, lastDraw?: number[]): number[] {
+export function statProfileGame(
+  profile: StatProfile,
+  lastDraw?: number[],
+  size = GAME_SIZE
+): number[] {
   const weights = buildWeights(profile.frequency);
   const approved: number[][] = [];
   let fallback: number[] = [];
   let fallbackViolations = Infinity;
 
   for (let i = 0; i < PROFILE_MAX_ATTEMPTS && approved.length < PROFILE_POOL; i++) {
-    const candidate = weightedSample(weights, GAME_SIZE);
+    const candidate = weightedSample(weights, size);
     if (passesProfile(candidate, profile, lastDraw)) {
       approved.push(candidate);
       continue;
@@ -259,28 +296,34 @@ export function statProfileGame(profile: StatProfile, lastDraw?: number[]): numb
 interface StrategyContext {
   weights: Map<number, number>;
   freq: Map<number, number>;
+  /** Dezenas por jogo (15–20) */
+  size: number;
   lastDraw?: number[];
   profile?: StatProfile;
+  strongBaseFixed?: number;
+  modalRepeatCount?: number;
 }
 
-type ActiveStrategy = Exclude<StrategyId, "legacy">;
+type ActiveStrategy = Exclude<StrategyId, "legacy" | "matrix">;
 
 const STRATEGY_FNS: Record<ActiveStrategy, (ctx: StrategyContext) => number[]> = {
-  weighted: ({ weights }) => weightedRouletteGame(weights),
-  strongBase: ({ freq }) => strongBaseGame(freq),
+  weighted: ({ weights, size }) => weightedRouletteGame(weights, size),
+  strongBase: ({ freq, strongBaseFixed, size }) => strongBaseGame(freq, strongBaseFixed, size),
   // sem o último concurso disponível, degrada para a roleta viciada
-  modalRepeat: ({ weights, lastDraw }) =>
+  modalRepeat: ({ weights, lastDraw, modalRepeatCount, size }) =>
     lastDraw && lastDraw.length === GAME_SIZE
-      ? modalRepeatGame(weights, lastDraw)
-      : weightedRouletteGame(weights),
-  antiCrowd: ({ lastDraw }) => antiCrowdGame(lastDraw),
+      ? modalRepeatGame(weights, lastDraw, modalRepeatCount, size)
+      : weightedRouletteGame(weights, size),
+  antiCrowd: ({ lastDraw, size }) => antiCrowdGame(lastDraw, size),
   // sem perfil calculado (histórico indisponível), degrada para a roleta viciada
-  statProfile: ({ profile, weights, lastDraw }) =>
-    profile ? statProfileGame(profile, lastDraw) : weightedRouletteGame(weights),
+  statProfile: ({ profile, weights, lastDraw, size }) =>
+    profile ? statProfileGame(profile, lastDraw, size) : weightedRouletteGame(weights, size),
 };
 
 interface GenerateOptions {
   gamesCount: number;
+  /** Dezenas por jogo (15–20, padrão 15) */
+  gameSize?: number;
   strategies: {
     weighted: boolean;
     strongBase: boolean;
@@ -293,6 +336,10 @@ interface GenerateOptions {
   lastDraw?: number[];
   /** Perfil estatístico (buildProfile) — habilita a estratégia Perfil Estatístico */
   profile?: StatProfile;
+  /** Base Forte: quantidade de dezenas fixas (padrão 10) */
+  strongBaseFixed?: number;
+  /** Repetição Modal: centro da quantidade de repetidas do último concurso (padrão 9) */
+  modalRepeatCount?: number;
   /** Fechamento por Dispersão: seleciona os N jogos menos sobrepostos entre 4N candidatos */
   dispersion?: boolean;
 }
@@ -310,8 +357,11 @@ export function generateGames(
   const ctx: StrategyContext = {
     weights: buildWeights(freq),
     freq,
+    size: clampGameSize(options.gameSize ?? GAME_SIZE),
     lastDraw: options.lastDraw,
     profile: options.profile,
+    strongBaseFixed: options.strongBaseFixed,
+    modalRepeatCount: options.modalRepeatCount,
   };
 
   // Perfil Estatístico vai primeiro: é o jogo que a Dispersão preserva como semente
@@ -376,10 +426,10 @@ function generateOne(
   return { numbers: lastCandidate, strategy, relaxedFilters: activeFilters };
 }
 
-/** Distância entre jogos: 15 − |interseção| ∈ [0, 10] (mín. teórico de sobreposição = 5) */
+/** Distância entre jogos: n − |interseção| (para 15: ∈ [0, 10], sobreposição mínima = 5) */
 function gameDistance(a: number[], b: number[]): number {
   const bSet = new Set(b);
-  return GAME_SIZE - a.filter((n) => bSet.has(n)).length;
+  return a.length - a.filter((n) => bSet.has(n)).length;
 }
 
 /**

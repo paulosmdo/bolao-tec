@@ -19,7 +19,7 @@ export default function NavBar() {
             ✳
           </span>
           <span className="font-semibold text-zinc-100 hidden sm:block">
-            Lotofácil <span className="text-volt">Final 0</span>
+            Lotofácil
           </span>
         </Link>
 

@@ -26,6 +26,7 @@ export type StrategyId =
   | "modalRepeat"
   | "antiCrowd"
   | "statProfile"
+  | "matrix"
   | "legacy";
 export type FilterId = "oddEven" | "frame" | "sum";
 
@@ -34,6 +35,8 @@ export interface GeneratedGame {
   strategy: StrategyId;
   /** Filtros que precisaram ser desligados para o jogo terminar de ser gerado */
   relaxedFilters: FilterId[];
+  /** Etapa de fechamento que reconstruiu o bilhete (opcional) */
+  closing?: "matrix";
 }
 
 export interface Combo {
@@ -51,9 +54,11 @@ export interface Combo {
 export interface AppConfig {
   /** Quantos jogos gerar por combo */
   gamesPerCombo: number;
+  /** Dezenas por jogo (15–20). Acima de 15 o bilhete custa C(n,15) apostas. */
+  numbersPerGame: number;
   /** Quantos concursos passados entram na análise de frequência */
   drawsWindow: number;
-  /** Preço da aposta de 15 dezenas (R$) — usado no cálculo de ROI */
+  /** Preço da aposta de 15 dezenas (R$) — bilhete de n dezenas custa C(n,15) × este valor */
   ticketPrice: number;
   strategies: {
     weighted: boolean;
@@ -63,6 +68,10 @@ export interface AppConfig {
     statProfile: boolean;
   };
   filters: { oddEven: boolean; frame: boolean; sum: boolean };
+  /** Base Forte: quantas dezenas mais frequentes entram fixas (1–14, padrão 10) */
+  strongBaseFixed: number;
+  /** Repetição Modal: quantas dezenas do último concurso repetir (5–15, padrão 9, ±1) */
+  modalRepeatCount: number;
   /**
    * Quantos concursos passados alimentam o Perfil Estatístico (bandas de
    * ímpares, primos, Fibonacci, soma e repetição). 100 é o padrão.
@@ -78,6 +87,13 @@ export interface AppConfig {
    * com a menor sobreposição possível entre si (greedy max-min)
    */
   dispersion: boolean;
+  /**
+   * Fechamento por Matriz Combinatória: fixa as dezenas mais frequentes em
+   * todos os bilhetes e distribui o restante com sobreposição mínima.
+   */
+  matrixClosing: boolean;
+  /** Quantas dezenas fortes ficam fixas no Fechamento por Matriz (5–12) */
+  matrixFixedCount: number;
 }
 
 export interface RoiSummary {

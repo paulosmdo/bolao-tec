@@ -1,6 +1,13 @@
 "use client";
 import { useEffect, useState } from "react";
-import { FILTER_LABELS, STRATEGY_LABELS } from "@/lib/lotofacil/constants";
+import {
+  FILTER_LABELS,
+  MAX_GAME_SIZE,
+  MIN_GAME_SIZE,
+  STRATEGY_LABELS,
+  clampGameSize,
+} from "@/lib/lotofacil/constants";
+import { formatBRL, ticketCombinations, ticketCost } from "@/lib/lotofacil/stats";
 import { loadConfig, saveConfig } from "@/lib/lotofacil/storage";
 import type { AppConfig } from "@/lib/lotofacil/types";
 
@@ -53,15 +60,24 @@ export default function ConfigPage() {
     setSaved(false);
   };
 
+  const gameSize = clampGameSize(config.numbersPerGame);
+
   const handleSave = () => {
     // trava mínima de sanidade antes de persistir
     const clean: AppConfig = {
       ...config,
       gamesPerCombo: Math.min(Math.max(Math.round(config.gamesPerCombo) || 1, 1), 100),
+      numbersPerGame: gameSize,
       drawsWindow: Math.min(Math.max(Math.round(config.drawsWindow) || 10, 3), 50),
+      strongBaseFixed: Math.min(Math.max(Math.round(config.strongBaseFixed) || 10, 1), gameSize - 1),
+      modalRepeatCount: Math.min(
+        Math.max(Math.round(config.modalRepeatCount) || 9, Math.max(5, gameSize - 10)),
+        15
+      ),
       profileWindow: Math.min(Math.max(Math.round(config.profileWindow) || 100, 20), 300),
       profileSigma: Math.min(Math.max(Number(config.profileSigma) || 1, 0.5), 3),
       ticketPrice: Math.max(config.ticketPrice || 0, 0),
+      matrixFixedCount: Math.min(Math.max(Math.round(config.matrixFixedCount) || 9, 5), gameSize - 3),
     };
     setConfig(clean);
     saveConfig(clean);
@@ -93,6 +109,25 @@ export default function ConfigPage() {
         </label>
 
         <label className="block">
+          <span className="text-sm text-zinc-400">
+            Quantidade de dezenas por jogo ({MIN_GAME_SIZE}–{MAX_GAME_SIZE})
+          </span>
+          <input
+            type="number"
+            min={MIN_GAME_SIZE}
+            max={MAX_GAME_SIZE}
+            value={config.numbersPerGame}
+            onChange={(e) => update({ numbersPerGame: Number(e.target.value) })}
+            className={inputClass}
+          />
+          <span className="block text-xs text-zinc-500 mt-1.5">
+            {gameSize === 15
+              ? "Aposta simples: 1 combinação por jogo."
+              : `Um jogo de ${gameSize} dezenas embute ${ticketCombinations(gameSize).toLocaleString("pt-BR")} apostas de 15 e custa ${formatBRL(ticketCost(gameSize, config.ticketPrice))}. Os acertos pagam pelo desdobramento (todas as apostas embutidas).`}
+          </span>
+        </label>
+
+        <label className="block">
           <span className="text-sm text-zinc-400">Janela de análise (últimos N concursos)</span>
           <input
             type="number"
@@ -105,7 +140,7 @@ export default function ConfigPage() {
         </label>
 
         <label className="block">
-          <span className="text-sm text-zinc-400">Preço da aposta (R$) — para o ROI</span>
+          <span className="text-sm text-zinc-400">Preço da aposta de 15 dezenas (R$) — para o ROI</span>
           <input
             type="number"
             min={0}
@@ -125,15 +160,45 @@ export default function ConfigPage() {
           onChange={(v) => update({ strategies: { ...config.strategies, weighted: v } })}
         />
         <Toggle
-          label={STRATEGY_LABELS.strongBase}
+          label={`Base Forte (${config.strongBaseFixed} fixos + ${gameSize - config.strongBaseFixed} aleatórios)`}
           checked={config.strategies.strongBase}
           onChange={(v) => update({ strategies: { ...config.strategies, strongBase: v } })}
         />
+        {config.strategies.strongBase && (
+          <label className="block py-3 border-b border-noir-700/60">
+            <span className="text-sm text-zinc-400">
+              Dezenas fixas da Base Forte (as mais frequentes da janela, 1–{gameSize - 1})
+            </span>
+            <input
+              type="number"
+              min={1}
+              max={gameSize - 1}
+              value={config.strongBaseFixed}
+              onChange={(e) => update({ strongBaseFixed: Number(e.target.value) })}
+              className={inputClass}
+            />
+          </label>
+        )}
         <Toggle
-          label={STRATEGY_LABELS.modalRepeat}
+          label={`Repetição Modal (${config.modalRepeatCount} do último + ${gameSize - config.modalRepeatCount} ausentes)`}
           checked={config.strategies.modalRepeat}
           onChange={(v) => update({ strategies: { ...config.strategies, modalRepeat: v } })}
         />
+        {config.strategies.modalRepeat && (
+          <label className="block py-3 border-b border-noir-700/60">
+            <span className="text-sm text-zinc-400">
+              Dezenas repetidas do último concurso ({Math.max(5, gameSize - 10)}–15; sorteia ±1 em torno deste valor)
+            </span>
+            <input
+              type="number"
+              min={Math.max(5, gameSize - 10)}
+              max={15}
+              value={config.modalRepeatCount}
+              onChange={(e) => update({ modalRepeatCount: Number(e.target.value) })}
+              className={inputClass}
+            />
+          </label>
+        )}
         <Toggle
           label={STRATEGY_LABELS.antiCrowd}
           checked={config.strategies.antiCrowd}
@@ -179,7 +244,8 @@ export default function ConfigPage() {
           <p>
             <span className="font-medium text-zinc-400">Repetição Modal:</span> ~79% dos
             concursos repetem 8 a 10 dezenas do anterior (moda estatística: 9). Sorteia
-            k∈{"{8,9,10}"} repetidas e completa com as ausentes.
+            k∈{"{c−1, c, c+1}"} repetidas em torno do valor configurado c e completa com as
+            ausentes.
           </p>
           <p>
             <span className="font-medium text-zinc-400">Anti-Multidão:</span> os prêmios de
@@ -244,6 +310,37 @@ export default function ConfigPage() {
           jogos de 15 dezenas compartilham no mínimo 5, em média 9). Combos dispersos cobrem
           mais resultados possíveis e evitam que todos os bilhetes percam juntos.
         </p>
+        <div className="mt-4 border-t border-noir-700/60 pt-1">
+          <Toggle
+            label="Fechamento por Matriz Combinatória (fixas + blocos espaçados)"
+            checked={config.matrixClosing}
+            onChange={(v) => update({ matrixClosing: v })}
+          />
+          {config.matrixClosing && (
+            <label className="block pt-3">
+              <span className="text-sm text-zinc-400">
+                Dezenas fixas em todos os bilhetes (as mais frequentes da janela)
+              </span>
+              <input
+                type="number"
+                min={5}
+                max={gameSize - 3}
+                value={config.matrixFixedCount}
+                onChange={(e) => update({ matrixFixedCount: Number(e.target.value) })}
+                className={inputClass}
+              />
+            </label>
+          )}
+          <p className="text-xs text-zinc-500 mt-3">
+            Etapa final, aplicada sobre os jogos já gerados: as N dezenas mais frequentes
+            entram fixas em todos os bilhetes e as demais são distribuídas por uma matriz
+            combinatória, para que dois bilhetes quaisquer compartilhem o mínimo possível fora
+            das fixas e cada dezena variável apareça um número parecido de vezes. Evita jogos
+            quase iguais (2,3,5,10,15 e 2,3,5,10,14) em favor de blocos espaçados (2,3,5,9,19
+            e 2,3,5,11,20). Bilhetes que não puderam vir de um jogo gerado aparecem como
+            &quot;Matriz Combinatória&quot;.
+          </p>
+        </div>
       </section>
 
       <div className="flex items-center gap-3 pt-1">

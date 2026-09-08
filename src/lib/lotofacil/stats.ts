@@ -1,4 +1,4 @@
-import { FIXED_PRIZES } from "./constants";
+import { FIXED_PRIZES, GAME_SIZE } from "./constants";
 import type { Combo, Draw, RoiSummary } from "./types";
 
 /** Frequência de saída de cada dezena numa janela de concursos */
@@ -18,10 +18,49 @@ export function countHits(game: number[], drawn: number[]): number {
   return game.filter((n) => drawnSet.has(n)).length;
 }
 
-/** Prêmio fixo (11 a 13 acertos). Retorna null para 14/15 (prêmio variável). */
+/** Prêmio fixo (11 a 13 acertos) de um jogo de 15. Retorna null para 14/15 (prêmio variável). */
 export function fixedPrizeFor(hits: number): number | null {
   if (hits >= 14) return null;
   return FIXED_PRIZES[hits] ?? 0;
+}
+
+/** Coeficiente binomial C(n, k) — 0 fora do domínio */
+export function combinations(n: number, k: number): number {
+  if (k < 0 || k > n) return 0;
+  let r = 1;
+  for (let i = 1; i <= k; i++) r = (r * (n - k + i)) / i;
+  return Math.round(r);
+}
+
+/** Um bilhete de `size` dezenas equivale a C(size, 15) apostas simples */
+export const ticketCombinations = (size: number) => combinations(size, GAME_SIZE);
+
+/** Custo do bilhete: preço da aposta de 15 × número de apostas embutidas */
+export const ticketCost = (size: number, ticketPrice: number) =>
+  ticketPrice * ticketCombinations(size);
+
+export interface TicketPrize {
+  /** Soma dos prêmios fixos (11–13) de todas as apostas embutidas */
+  fixed: number;
+  /** Alguma aposta embutida fez 14 ou 15 (prêmio rateado, não estimável) */
+  variable: boolean;
+}
+
+/**
+ * Prêmio de um bilhete de `size` dezenas com `hits` acertos (desdobramento):
+ * das C(size,15) apostas embutidas, C(hits, j) · C(size − hits, 15 − j) fazem
+ * exatamente j acertos. Para size = 15 reproduz fixedPrizeFor.
+ */
+export function ticketPrize(size: number, hits: number): TicketPrize {
+  let fixed = 0;
+  let variable = false;
+  for (let j = 11; j <= GAME_SIZE; j++) {
+    const count = combinations(hits, j) * combinations(size - hits, GAME_SIZE - j);
+    if (count === 0) continue;
+    if (j >= 14) variable = true;
+    else fixed += count * (FIXED_PRIZES[j] ?? 0);
+  }
+  return { fixed, variable };
 }
 
 /**
@@ -45,12 +84,12 @@ export function computeRoi(combos: Combo[], ticketPrice: number): RoiSummary {
     summary.combosChecked += 1;
     combo.games.forEach((game) => {
       summary.gamesChecked += 1;
-      summary.totalSpent += ticketPrice;
+      summary.totalSpent += ticketCost(game.numbers.length, ticketPrice);
       const hits = countHits(game.numbers, combo.result!.drawnNumbers);
       summary.hitsDistribution[hits] = (summary.hitsDistribution[hits] ?? 0) + 1;
-      const prize = fixedPrizeFor(hits);
-      if (prize === null) summary.variablePrizeGames += 1;
-      else summary.totalFixedWon += prize;
+      const prize = ticketPrize(game.numbers.length, hits);
+      if (prize.variable) summary.variablePrizeGames += 1;
+      summary.totalFixedWon += prize.fixed;
     });
   });
 

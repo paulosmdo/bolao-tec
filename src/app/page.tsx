@@ -12,13 +12,14 @@ import {
   type StatProfile,
 } from "@/lib/lotofacil/analysis";
 import { STRATEGY_LABELS } from "@/lib/lotofacil/constants";
+import { applyMatrixClosing } from "@/lib/lotofacil/closing";
 import { generateGames } from "@/lib/lotofacil/generator";
 import {
   buildFrequency,
   computeRoi,
   countHits,
-  fixedPrizeFor,
   formatBRL,
+  ticketPrize,
   nextFinalZeroContest,
 } from "@/lib/lotofacil/stats";
 import { addCombo, loadCombos, loadConfig, updateCombo } from "@/lib/lotofacil/storage";
@@ -120,17 +121,28 @@ export default function DashboardPage() {
       setProfile(statProfile);
       const games = generateGames(frequency, {
         gamesCount: config.gamesPerCombo,
+        gameSize: config.numbersPerGame,
         strategies: config.strategies,
         filters: config.filters,
         lastDraw: last.listaDezenas.map((d) => parseInt(d, 10)),
         profile: statProfile,
+        strongBaseFixed: config.strongBaseFixed,
+        modalRepeatCount: config.modalRepeatCount,
         dispersion: config.dispersion,
       });
+      // Etapa opcional: Fechamento por Matriz Combinatória sobre os jogos gerados
+      const finalGames = config.matrixClosing
+        ? applyMatrixClosing(games, frequency, {
+            gamesCount: config.gamesPerCombo,
+            fixedCount: config.matrixFixedCount,
+            gameSize: config.numbersPerGame,
+          }).games
+        : games;
       const combo: Combo = {
         id: newId(),
         createdAt: new Date().toISOString(),
         targetContest: nextFinalZeroContest(last),
-        games,
+        games: finalGames,
       };
       setCombos(addCombo(combo));
     } catch {
@@ -157,7 +169,9 @@ export default function DashboardPage() {
           disabled={generating || loading || !ultimo}
           className="px-6 py-2.5 bg-volt text-volt-ink rounded-full font-semibold hover:bg-volt-soft disabled:opacity-40 transition-colors"
         >
-          {generating ? "Gerando..." : `Gerar combo (${config?.gamesPerCombo ?? "-"} jogos)`}
+          {generating
+            ? "Gerando..."
+            : `Gerar combo (${config?.gamesPerCombo ?? "-"} jogos de ${config?.numbersPerGame ?? 15})`}
         </button>
       </div>
 
@@ -304,18 +318,15 @@ export default function DashboardPage() {
                 <div className="flex flex-wrap gap-6">
                   {lastPlayed.games.map((game, i) => {
                     const hits = countHits(game.numbers, lastPlayed.result!.drawnNumbers);
-                    const prize = fixedPrizeFor(hits);
+                    const prize = ticketPrize(game.numbers.length, hits);
                     return (
                       <div key={i}>
                         <p className="text-xs text-zinc-500 mb-1.5">
                           Jogo {i + 1} — {STRATEGY_LABELS[game.strategy]} —{" "}
                           <span className={`font-semibold ${hits >= 11 ? "text-volt" : "text-zinc-300"}`}>
                             {hits} acertos
-                            {prize === null
-                              ? " · prêmio variável 🎉"
-                              : prize > 0
-                              ? ` · ${formatBRL(prize)}`
-                              : ""}
+                            {prize.variable ? " · prêmio variável 🎉" : ""}
+                            {prize.fixed > 0 ? ` · ${formatBRL(prize.fixed)}` : ""}
                           </span>
                         </p>
                         <Volante
