@@ -19,3 +19,55 @@ body {
     text-wrap: balance;
   }
 }
+
+/* ---- Animações do Gerador de combos ---- */
+@keyframes lf-pop {
+  0% { transform: scale(0.3); opacity: 0; }
+  70% { transform: scale(1.12); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}
+@keyframes lf-glow {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(201, 242, 75, 0); }
+  50% { box-shadow: 0 0 18px 4px rgba(201, 242, 75, 0.45); }
+}
+@keyframes lf-spin {
+  to { transform: rotate(360deg); }
+}
+@keyframes lf-bar {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(300%); }
+}
+@keyframes lf-dots {
+  0% { content: ""; }
+  33% { content: "."; }
+  66% { content: ".."; }
+  100% { content: "..."; }
+}
+
+@layer utilities {
+  .animate-pop {
+    animation: lf-pop 0.45s cubic-bezier(0.2, 0.9, 0.3, 1.4) both;
+  }
+  .animate-glow {
+    animation: lf-glow 1s ease-in-out infinite;
+  }
+  .animate-spin-slow {
+    animation: lf-spin 1.6s linear infinite;
+  }
+  .animate-bar {
+    animation: lf-bar 1.2s ease-in-out infinite;
+  }
+  .animate-dots::after {
+    display: inline-block;
+    width: 1.2em;
+    text-align: left;
+    content: "";
+    animation: lf-dots 1.2s steps(1, end) infinite;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-pop, .animate-glow, .animate-spin-slow, .animate-bar, .animate-dots::after {
+    animation: none;
+  }
+}
